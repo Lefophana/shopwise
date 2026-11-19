@@ -1,4 +1,4 @@
-import sqlite3, os
+import sqlite3
 from flask import Flask, request, redirect, g
 
 app = Flask(__name__)
@@ -23,61 +23,79 @@ def init_db():
     db.commit(); db.close()
 init_db()
 
-def get_totals():
+def totals():
     db = get_db(); cur = db.cursor()
-    cur.execute("SELECT COALESCE(SUM(qty*sell_price),0) as s, COALESCE(SUM(qty*cost_price),0) as c, COALESCE(SUM(qty),0) as q FROM products")
+    cur.execute("SELECT COALESCE(SUM(qty*sell_price),0) as s, COALESCE(SUM(qty*cost_price),0) as c FROM products")
     r = cur.fetchone()
     sales = r['s'] or 0
     profit = sales - (r['c'] or 0)
-    value = r['c'] or 0
-    return sales, profit, value
+    cur.execute("SELECT COALESCE(SUM(total),0) as t FROM sales")
+    today_sales = cur.fetchone()['t'] or 0
+    return today_sales, profit, r['c'] or 0
 
+# NO MOVEMENT - fixed, stable, no animations, no hover jump
 STYLE = """
 <style>
-body{font-family:Arial;background:#f0f2f5;margin:0;padding:15px}
-.top{background:#16a34a;color:white;padding:20px;border-radius:15px;text-align:center}
-.top h1{margin:0;font-size:28px}
-.cards{display:flex;gap:10px;margin:15px 0}
-.card{flex:1;background:white;padding:15px;border-radius:12px;text-align:center;box-shadow:0 2px 5px #ccc}
-.card b{font-size:22px;display:block}
-.green{color:#16a34a}.blue{color:#2563eb}.orange{color:#ea580c}
-.box{background:white;padding:15px;border-radius:12px;margin-top:15px;box-shadow:0 2px 5px #ccc}
-input{width:100%;padding:10px;margin:5px 0;border:1px solid #ddd;border-radius:8px;box-sizing:border-box}
-.btn{background:#16a34a;color:white;border:none;padding:12px;width:100%;border-radius:10px;font-size:16px;font-weight:bold}
-.btn2{background:#2563eb;color:white;padding:8px 12px;border-radius:8px;text-decoration:none;display:inline-block;margin:2px}
-.btn3{background:#ea580c;color:white;padding:8px 12px;border-radius:8px;text-decoration:none;display:inline-block;margin:2px}
-.btn4{background:#dc2626;color:white;padding:8px 12px;border-radius:8px;text-decoration:none;display:inline-block;margin:2px}
-.item{background:white;padding:12px;border-radius:12px;margin:10px 0;box-shadow:0 2px 5px #ccc}
-a{color:#2563eb}
+*{box-sizing:border-box}
+body{font-family:Arial;margin:0;background:#f5f5f5}
+.header{background:#e65100;color:white;text-align:center;padding:15px}
+.header h1{margin:0;font-size:28px}
+.header p{margin:2px}
+.nav{background:#111;color:white;text-align:center;padding:10px}
+.nav a{color:white;text-decoration:none;margin:0 15px;font-weight:bold}
+.wrap{max-width:1000px;margin:auto;padding:15px}
+.cards{display:flex;gap:10px}
+.card{flex:1;background:#d6f0ff;padding:15px;border-radius:8px;text-align:center}
+.card b{font-size:20px;display:block}
+.topbar{background:#8ecdf5;padding:10px;text-align:center;font-weight:bold;margin:15px 0}
+table{width:100%;border-collapse:collapse;background:white;table-layout:fixed}
+th,td{border:1px solid #999;padding:10px;text-align:center;word-wrap:break-word}
+th{background:#f0f0f0}
+.btn-sell{background:#e65100;color:white;border:none;padding:8px 14px;cursor:pointer}
+.btn-add5{background:#2563eb;color:white;border:none;padding:8px 14px;cursor:pointer}
+.btn-edit{background:#111;color:white;border:none;padding:6px 12px;cursor:pointer}
+.btn-del{background:#dc2626;color:white;border:none;padding:6px 12px;cursor:pointer}
+.addbox{background:#f59e0b;padding:20px;text-align:center;margin-top:15px}
+.addbox input{padding:7px;width:150px;margin:2px}
+.addbox button{padding:7px 14px}
+.low{color:#dc2626;font-weight:bold;font-size:13px}
+.box{background:white;padding:20px;border-radius:8px;text-align:center}
+.bigbtn{background:#e65100;color:white;padding:12px 25px;border:none;font-size:16px;font-weight:bold;cursor:pointer}
+a{color:#111}
 </style>
 """
 
+NAV = '<div class="header"><h1>🛒 ShopWise</h1><p>Tembisa | Best Prices Daily</p></div><div class="nav"><a href="/">🏠 Home</a><a href="/shop">🛒 Shop</a><a href="/history">📜 History</a><a href="/end-day">📊 End Day</a></div>'
+
 @app.route("/")
 def home():
-    s,p,v = get_totals()
-    return f'''{STYLE}<div class="top"><h1>🛒 ShopWise</h1><p>Your Shop, Made Simple</p></div><div class="cards"><div class="card">Sales Today<b class="green">R{s:.2f}</b></div><div class="card">Profit Today<b class="blue">R{p:.2f}</b></div><div class="card">Stock Value<b class="orange">R{v:.2f}</b></div></div><div class="box"><a class="btn2" href="/stock">📦 Go to Stock</a> <a class="btn2" href="/end-day">📊 End of Day</a></div><div class="box"><h3>➕ Add Product</h3><form method="POST" action="/add">Name<input name="name" placeholder="e.g Bread"><br>Sell Price<input name="sell" type="number" step="0.01" placeholder="20"><br>Cost Price<input name="cost" type="number" step="0.01" placeholder="12"><br>Qty<input name="qty" type="number" placeholder="10"><br><button class="btn">Add Product</button></form></div>'''
+    s,p,stock = totals()
+    return f'''{STYLE}{NAV}<div class="wrap"><div style="text-align:center"><h2>Welcome to ShopWise! 👋</h2><p>Your Shop in Tembisa - Open Today</p></div><div class="cards"><div class="card">🔥 Today Sales<b>R{s:.0f}</b></div><div class="card">💰 Today Profit<b>R{p:.0f}</b></div><div class="card">📦 Stock Value<b>R{stock:.0f}</b></div></div><div class="topbar">🔥 ALL TIME: Sales: R{s:.0f} | Profit: R{p:.0f}</div><div class="box"><form action="/shop"><button class="bigbtn">🛒 Go to Shop - Sell Now</button></form></div></div>'''
+
+@app.route("/shop")
+def shop():
+    s,p,stock = totals()
+    db = get_db(); cur = db.cursor()
+    cur.execute("SELECT * FROM products")
+    rows = cur.fetchall()
+    h = f'''{STYLE}{NAV}<div class="wrap"><div class="topbar">🔥 Sales: R{s:.0f} | 💰 Profit: R{p:.0f} | 📦 Stock: R{stock:.0f}</div><table><tr><th>Name</th><th>Price</th><th>Qty</th><th>Sell</th><th>+ Stock</th><th>Edit</th><th>Delete</th></tr>'''
+    for r in rows:
+        low = '<br><span class="low">⚠️ LOW!</span>' if r['qty']<=5 else ''
+        h += f'''<tr><td><b>{r['name']}</b>{low}</td><td>R{r['sell_price']:.1f}<br><small>Cost R{r['cost_price']:.1f}</small></td><td>{r['qty']}</td><td><form method="POST" action="/sell/{r['id']}"><button class="btn-sell">Sell 1</button></form></td><td><form method="POST" action="/addstock/{r['id']}"><button class="btn-add5">+5</button></form></td><td><a href="/edit/{r['id']}"><button class="btn-edit">Edit</button></a></td><td><form method="POST" action="/delete/{r['id']}"><button class="btn-del">Delete</button></form></td></tr>'''
+    h += '</table>'
+    if not rows:
+        h += '<p style="text-align:center">No products yet. Add below!</p>'
+    h += f'''<div class="addbox"><h3>Add New Product</h3><form method="POST" action="/add">Name <input name="name" required> Sell <input name="sell" type="number" step="0.01" required> Cost <input name="cost" type="number" step="0.01" required> Qty <input name="qty" type="number" required> <button>Add</button></form></div></div>'''
+    return h
 
 @app.route("/add", methods=["POST"])
 def add():
     db = get_db(); cur = db.cursor()
     cur.execute("INSERT INTO products (name,sell_price,cost_price,qty) VALUES (?,?,?,?)",(request.form['name'],float(request.form['sell']),float(request.form['cost']),int(request.form['qty'])))
     db.commit(); cur.close()
-    return redirect("/stock")
+    return redirect("/shop")
 
-@app.route("/stock")
-def stock():
-    db = get_db(); cur = db.cursor()
-    cur.execute("SELECT * FROM products")
-    rows = cur.fetchall()
-    s,p,v = get_totals()
-    h = f'''{STYLE}<div class="top"><h1>📦 My Stock</h1></div><div class="cards"><div class="card">Sales<b class="green">R{s:.2f}</b></div><div class="card">Profit<b class="blue">R{p:.2f}</b></div><div class="card">Stock<b class="orange">R{v:.2f}</b></div></div><a class="btn2" href="/">⬅ Back Home</a> <a class="btn2" href="/end-day">📊 End of Day</a>'''
-    for r in rows:
-        h += f'''<div class="item"><b>{r['name']}</b><br>Sell: R{r['sell_price']} | Cost: R{r['cost_price']} | Qty: {r['qty']}<br><br><a class="btn2" href="/sell/{r['id']}">💰 Sell 1</a> <a class="btn3" href="/edit/{r['id']}">✏️ Edit</a> <a class="btn4" href="/delete/{r['id']}">🗑️ Delete</a></div>'''
-    if not rows:
-        h += '<div class="box">No products yet. Go home and add one!</div>'
-    return h
-
-@app.route("/sell/<int:pid>")
+@app.route("/sell/<int:pid>", methods=["POST"])
 def sell(pid):
     db = get_db(); cur = db.cursor()
     cur.execute("SELECT * FROM products WHERE id=?",(pid,))
@@ -87,13 +105,19 @@ def sell(pid):
         cur.execute("INSERT INTO sales (product_id,qty,total) VALUES (?,?,?)",(pid,1,pr['sell_price']))
         db.commit()
     cur.close()
-    return redirect("/stock")
+    return redirect("/shop")
 
-@app.route("/delete/<int:pid>")
+@app.route("/addstock/<int:pid>", methods=["POST"])
+def addstock(pid):
+    db = get_db(); cur = db.cursor()
+    cur.execute("UPDATE products SET qty=qty+5 WHERE id=?",(pid,)); db.commit(); cur.close()
+    return redirect("/shop")
+
+@app.route("/delete/<int:pid>", methods=["POST"])
 def delete(pid):
     db = get_db(); cur = db.cursor()
     cur.execute("DELETE FROM products WHERE id=?",(pid,)); db.commit(); cur.close()
-    return redirect("/stock")
+    return redirect("/shop")
 
 @app.route("/edit/<int:pid>", methods=["GET","POST"])
 def edit(pid):
@@ -101,15 +125,26 @@ def edit(pid):
     if request.method=="POST":
         cur.execute("UPDATE products SET name=?, sell_price=?, cost_price=?, qty=? WHERE id=?",(request.form['name'],float(request.form['sell']),float(request.form['cost']),int(request.form['qty']),pid))
         db.commit(); cur.close()
-        return redirect("/stock")
+        return redirect("/shop")
     cur.execute("SELECT * FROM products WHERE id=?",(pid,))
     pr = cur.fetchone(); cur.close()
-    return f'''{STYLE}<div class="top"><h1>✏️ Edit {pr['name']}</h1></div><div class="box"><form method="POST">Name<input name="name" value="{pr['name']}"><br>Sell<input name="sell" value="{pr['sell_price']}"><br>Cost<input name="cost" value="{pr['cost_price']}"><br>Qty<input name="qty" value="{pr['qty']}"><br><button class="btn">Save Changes</button></form></div>'''
+    return f'''{STYLE}{NAV}<div class="wrap"><div class="box"><h2>Edit {pr['name']}</h2><form method="POST">Name <input name="name" value="{pr['name']}"><br><br>Sell <input name="sell" value="{pr['sell_price']}"><br><br>Cost <input name="cost" value="{pr['cost_price']}"><br><br>Qty <input name="qty" value="{pr['qty']}"><br><br><button class="bigbtn">Save</button></form></div></div>'''
+
+@app.route("/history")
+def history():
+    db = get_db(); cur = db.cursor()
+    cur.execute("SELECT sales.*, products.name FROM sales LEFT JOIN products ON sales.product_id=products.id ORDER BY sales.id DESC LIMIT 50")
+    rows = cur.fetchall()
+    h = f'''{STYLE}{NAV}<div class="wrap"><div class="box"><h2>📜 Sales History</h2></div><table><tr><th>Product</th><th>Qty</th><th>Total</th><th>Date</th></tr>'''
+    for r in rows:
+        h += f"<tr><td>{r['name'] or 'Deleted'}</td><td>{r['qty']}</td><td>R{r['total']:.2f}</td><td>{r['date']}</td></tr>"
+    h += '</table></div>'
+    return h
 
 @app.route("/end-day")
 def end_day():
-    s,p,v = get_totals()
-    return f'''{STYLE}<div class="top"><h1>📊 End Of Day</h1></div><div class="box" style="text-align:center"><h2>Sales Today: <span class="green">R{s:.2f}</span></h2><h2>Profit Today: <span class="blue">R{p:.2f}</span></h2><h2>Stock Value: <span class="orange">R{v:.2f}</span></h2><br><a class="btn2" href="/">⬅ Back Home</a> <a class="btn2" href="/stock">📦 Stock</a></div>'''
+    s,p,stock = totals()
+    return f'''{STYLE}{NAV}<div class="wrap"><div class="box"><h1>📊 End Of Day</h1><h2>Sales Today: R{s:.2f}</h2><h2>Profit Today: R{p:.2f}</h2><h2>Stock Value: R{stock:.2f}</h2><br><a href="/shop"><button class="bigbtn">Back to Shop</button></a></div></div>'''
 
 if __name__=="__main__":
     app.run(debug=True)
