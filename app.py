@@ -18,7 +18,7 @@ def close_db(e):
 
 def init_db():
     db = sqlite3.connect(DB)
-    db.execute("CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, sell_price REAL, cost_price REAL, qty INTEGER)")
+    db.execute("CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, sell_price REAL, cost_price REAL, qty INTEGER, photo TEXT DEFAULT '')")
     db.execute("CREATE TABLE IF NOT EXISTS sales (id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER, qty INTEGER, total REAL, date TEXT DEFAULT CURRENT_TIMESTAMP)")
     db.commit(); db.close()
 init_db()
@@ -32,6 +32,20 @@ def totals():
     cur.execute("SELECT COALESCE(SUM(total),0) as t FROM sales")
     today_sales = cur.fetchone()['t'] or 0
     return today_sales, profit, r['c'] or 0
+
+def get_photo(name, photo):
+    if photo and photo.strip():
+        return f'<img src="{photo}" style="width:60px;height:60px;object-fit:cover;border-radius:8px">'
+    n = name.lower()
+    if 'coke' in n or 'cola' in n or 'drink' in n or 'juice' in n: return '<div style="font-size:40px">🥤</div>'
+    if 'chip' in n or 'crisp' in n: return '<div style="font-size:40px">🍟</div>'
+    if 'bread' in n: return '<div style="font-size:40px">🍞</div>'
+    if 'milk' in n: return '<div style="font-size:40px">🥛</div>'
+    if 'egg' in n: return '<div style="font-size:40px">🥚</div>'
+    if 'choco' in n or 'sweet' in n or 'candy' in n: return '<div style="font-size:40px">🍫</div>'
+    if 'soap' in n: return '<div style="font-size:40px">🧼</div>'
+    if 'rice' in n or 'meal' in n or 'pap' in n: return '<div style="font-size:40px">🍚</div>'
+    return '<div style="font-size:40px">🛒</div>'
 
 STYLE = """
 <style>
@@ -86,23 +100,27 @@ def shop():
     h = f'''{STYLE}{NAV}<div class="wrap"><div class="topbar">🔥 Sales: R{s:.0f} | 💰 Profit: R{p:.0f} | 📦 Stock: R{stock:.0f}</div><div class="searchbox"><form method="GET" action="/shop"><input name="q" value="{q}" placeholder="🔍 Search product... e.g Coke, Chips, Bread"><button>Search</button></form>'''
     if q:
         h += f'<p>Showing results for: <b>{q}</b> - <a href="/shop">Clear Search ❌</a></p>'
-    h += '</div><table><tr><th>Name</th><th>Price</th><th>Qty</th><th>Sell</th><th>+ Stock</th><th>Edit</th><th>Delete</th></tr>'
+    h += '</div><table><tr><th>Photo</th><th>Name</th><th>Price</th><th>Qty</th><th>Sell</th><th>+ Stock</th><th>Edit</th><th>Delete</th></tr>'
     for r in rows:
         low = '<br><span class="low">⚠️ LOW!</span>' if r['qty']<=5 else ''
-        h += f'''<tr><td><b>{r['name']}</b>{low}</td><td>R{r['sell_price']:.1f}<br><small>Cost R{r['cost_price']:.1f}</small></td><td>{r['qty']}</td><td><form method="POST" action="/sell/{r['id']}"><button class="btn-sell">Sell 1</button></form></td><td><form method="POST" action="/addstock/{r['id']}"><button class="btn-add5">+5</button></form></td><td><a href="/edit/{r['id']}"><button class="btn-edit">Edit</button></a></td><td><form method="POST" action="/delete/{r['id']}"><button class="btn-del">Delete</button></form></td></tr>'''
+        photo_html = get_photo(r['name'], r['photo'] if 'photo' in r.keys() else '')
+        h += f'''<tr><td>{photo_html}</td><td><b>{r['name']}</b>{low}</td><td>R{r['sell_price']:.1f}<br><small>Cost R{r['cost_price']:.1f}</small></td><td>{r['qty']}</td><td><form method="POST" action="/sell/{r['id']}"><button class="btn-sell">Sell 1</button></form></td><td><form method="POST" action="/addstock/{r['id']}"><button class="btn-add5">+5</button></form></td><td><a href="/edit/{r['id']}"><button class="btn-edit">Edit</button></a></td><td><form method="POST" action="/delete/{r['id']}"><button class="btn-del">Delete</button></form></td></tr>'''
     h += '</table>'
     if not rows:
         if q:
             h += f'<p style="text-align:center">No product found for "{q}" 😢</p>'
         else:
             h += '<p style="text-align:center">No products yet. Add below!</p>'
-    h += f'''<div class="addbox"><h3>Add New Product</h3><form method="POST" action="/add">Name <input name="name" required> Sell <input name="sell" type="number" step="0.01" required> Cost <input name="cost" type="number" step="0.01" required> Qty <input name="qty" type="number" required> <button>Add</button></form></div></div>'''
+    h += f'''<div class="addbox"><h3>Add New Product</h3><form method="POST" action="/add">Name <input name="name" required> Sell <input name="sell" type="number" step="0.01" required> Cost <input name="cost" type="number" step="0.01" required> Qty <input name="qty" type="number" required><br><br>Photo Link (optional - leave empty for emoji) <input name="photo" style="width:300px" placeholder="Paste image link here"> <button>Add</button></form><p><small>Tip: If you leave Photo empty, we show 🥤 for Coke, 🍟 for Chips, 🍞 for Bread automatically!</small></p></div></div>'''
     return h
 
 @app.route("/add", methods=["POST"])
 def add():
     db = get_db(); cur = db.cursor()
-    cur.execute("INSERT INTO products (name,sell_price,cost_price,qty) VALUES (?,?,?,?)",(request.form['name'],float(request.form['sell']),float(request.form['cost']),int(request.form['qty'])))
+    try:
+        cur.execute("ALTER TABLE products ADD COLUMN photo TEXT DEFAULT ''")
+    except: pass
+    cur.execute("INSERT INTO products (name,sell_price,cost_price,qty,photo) VALUES (?,?,?,?,?)",(request.form['name'],float(request.form['sell']),float(request.form['cost']),int(request.form['qty']),request.form.get('photo','')))
     db.commit(); cur.close()
     return redirect("/shop")
 
@@ -134,12 +152,13 @@ def delete(pid):
 def edit(pid):
     db = get_db(); cur = db.cursor()
     if request.method=="POST":
-        cur.execute("UPDATE products SET name=?, sell_price=?, cost_price=?, qty=? WHERE id=?",(request.form['name'],float(request.form['sell']),float(request.form['cost']),int(request.form['qty']),pid))
+        cur.execute("UPDATE products SET name=?, sell_price=?, cost_price=?, qty=?, photo=? WHERE id=?",(request.form['name'],float(request.form['sell']),float(request.form['cost']),int(request.form['qty']),request.form.get('photo',''),pid))
         db.commit(); cur.close()
         return redirect("/shop")
     cur.execute("SELECT * FROM products WHERE id=?",(pid,))
     pr = cur.fetchone(); cur.close()
-    return f'''{STYLE}{NAV}<div class="wrap"><div class="box"><h2>Edit {pr['name']}</h2><form method="POST">Name <input name="name" value="{pr['name']}"><br><br>Sell <input name="sell" value="{pr['sell_price']}"><br><br>Cost <input name="cost" value="{pr['cost_price']}"><br><br>Qty <input name="qty" value="{pr['qty']}"><br><br><button class="bigbtn">Save</button></form></div></div>'''
+    photo_val = pr['photo'] if 'photo' in pr.keys() and pr['photo'] else ''
+    return f'''{STYLE}{NAV}<div class="wrap"><div class="box"><h2>Edit {pr['name']}</h2><form method="POST">Name <input name="name" value="{pr['name']}"><br><br>Sell <input name="sell" value="{pr['sell_price']}"><br><br>Cost <input name="cost" value="{pr['cost_price']}"><br><br>Qty <input name="qty" value="{pr['qty']}"><br><br>Photo Link <input name="photo" value="{photo_val}" style="width:300px"><br><br><button class="bigbtn">Save</button></form></div></div>'''
 
 @app.route("/history")
 def history():
