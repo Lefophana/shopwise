@@ -15,7 +15,9 @@ def init_db():
     conn.execute("CREATE TABLE IF NOT EXISTS sales (id INTEGER PRIMARY KEY, product TEXT, profit REAL, total REAL, day TEXT)")
     if conn.execute("SELECT COUNT(*) FROM products").fetchone()[0] == 0:
         conn.execute("INSERT INTO products (name,sell,cost,qty) VALUES ('Coke',20,14,18),('Bread',15,10,7),('Chips',12,8,40)")
-    conn.commit(); conn.close()
+    conn.commit()
+    conn.close()
+
 init_db()
 
 HEADER = """
@@ -36,7 +38,7 @@ def home():
     products = conn.execute("SELECT * FROM products").fetchall()
     today = datetime.date.today().isoformat()
     s = conn.execute("SELECT COALESCE(SUM(total),0), COALESCE(SUM(profit),0), COUNT(*) FROM sales WHERE day=?", (today,)).fetchone()
-    total_sales = conn.execute("SELECT COALESCE(SUM(total),0), COALESCE(SUM(profit),0) FROM sales").fetchone()
+    total = conn.execute("SELECT COALESCE(SUM(total),0), COALESCE(SUM(profit),0) FROM sales").fetchone()
     stock_val = sum(p['qty']*p['sell'] for p in products)
     conn.close()
     return f"""{HEADER}
@@ -49,7 +51,7 @@ def home():
     <div style="background:#fff3cd;padding:20px;border-radius:10px;"><h3>📦 Stock Value</h3><h2>R{int(stock_val)}</h2></div>
     </div>
     <br>
-    <div style="background:#e8f5e9;padding:15px;border-radius:10px;"><h3>🏆 ALL TIME: Sales R{int(total_sales[0])} | Profit R{int(total_sales[1])}</h3></div>
+    <div style="background:#e8f5e9;padding:15px;border-radius:10px;"><h3>🏆 ALL TIME: Sales R{int(total[0])} | Profit R{int(total[1])}</h3></div>
     <br>
     <a href="/stock"><button style="background:#ff6b35;color:white;padding:15px 30px;font-size:20px;border:none;border-radius:10px;">🛒 Go to Shop - Sell Now</button></a>
     <br><br>
@@ -102,37 +104,56 @@ def history():
 
 @app.route("/sell/<int:pid>")
 def sell(pid):
-    conn = get_db(); p = conn.execute("SELECT * FROM products WHERE id=?", (pid,)).fetchone()
+    conn = get_db()
+    p = conn.execute("SELECT * FROM products WHERE id=?", (pid,)).fetchone()
     if p and p['qty']>0:
         conn.execute("UPDATE products SET qty=qty-1 WHERE id=?", (pid,))
-        conn.execute("INSERT INTO sales (product,profit,total,day) VALUES (?,?,?,?)", (p['name'], p['sell']-p['cost'], p['sell'], datetime.date.today().isoformat())); conn.commit()
-    conn.close(); return redirect("/stock")
+        conn.execute("INSERT INTO sales (product,profit,total,day) VALUES (?,?,?,?)", (p['name'], p['sell']-p['cost'], p['sell'], datetime.date.today().isoformat()))
+        conn.commit()
+    conn.close()
+    return redirect("/stock")
 
 @app.route("/add/<int:pid>")
 def add(pid):
-    conn = get_db(); conn.execute("UPDATE products SET qty=qty+5 WHERE id=?", (pid,)); conn.commit(); conn.close(); return redirect("/stock")
+    conn = get_db()
+    conn.execute("UPDATE products SET qty=qty+5 WHERE id=?", (pid,))
+    conn.commit(); conn.close()
+    return redirect("/stock")
 
 @app.route("/add_product", methods=["POST"])
 def add_product():
-    conn = get_db(); conn.execute("INSERT INTO products (name,sell,cost,qty) VALUES (?,?,?,?)", (request.form['name'], float(request.form['sell']), float(request.form['cost']), int(request.form['qty']))); conn.commit(); conn.close(); return redirect("/stock")
+    conn = get_db()
+    conn.execute("INSERT INTO products (name,sell,cost,qty) VALUES (?,?,?,?)", (request.form['name'], float(request.form['sell']), float(request.form['cost']), int(request.form['qty'])))
+    conn.commit(); conn.close()
+    return redirect("/stock")
 
 @app.route("/delete/<int:pid>")
 def delete(pid):
-    conn = get_db(); conn.execute("DELETE FROM products WHERE id=?", (pid,)); conn.commit(); conn.close(); return redirect("/stock")
+    conn = get_db()
+    conn.execute("DELETE FROM products WHERE id=?", (pid,))
+    conn.commit(); conn.close()
+    return redirect("/stock")
 
 @app.route("/edit/<int:pid>")
 def edit(pid):
-    conn = get_db(); p = conn.execute("SELECT * FROM products WHERE id=?", (pid,)).fetchone(); conn.close()
+    conn = get_db()
+    p = conn.execute("SELECT * FROM products WHERE id=?", (pid,)).fetchone()
+    conn.close()
     return f'''{HEADER}<div style="text-align:center;padding:20px;"><h2>Edit {p['name']}</h2><form action="/update/{pid}" method="post">Name <input name="name" value="{p['name']}"><br><br>Sell <input name="sell" value="{p['sell']}"><br><br>Cost <input name="cost" value="{p['cost']}"><br><br>Qty <input name="qty" value="{p['qty']}"><br><br><button>Save</button></form></div>'''
 
 @app.route("/update/<int:pid>", methods=["POST"])
 def update(pid):
-    conn = get_db(); conn.execute("UPDATE products SET name=?,sell=?,cost=?,qty=? WHERE id=?", (request.form['name'], float(request.form['sell']), float(request.form['cost']), int(request.form['qty']), pid)); conn.commit(); conn.close(); return redirect("/stock")
+    conn = get_db()
+    conn.execute("UPDATE products SET name=?,sell=?,cost=?,qty=? WHERE id=?", (request.form['name'], float(request.form['sell']), float(request.form['cost']), int(request.form['qty']), pid))
+    conn.commit(); conn.close()
+    return redirect("/stock")
 
 @app.route("/end_day")
 def end_day():
-    conn = get_db(); today = datetime.date.today().isoformat()
-    s = conn.execute("SELECT COALESCE(SUM(total),0), COALESCE(SUM(profit),0) FROM sales WHERE day=?", (today,)).fetchone(); conn.close()
+    conn = get_db()
+    today = datetime.date.today().isoformat()
+    s = conn.execute("SELECT COALESCE(SUM(total),0), COALESCE(SUM(profit),0) FROM sales WHERE day=?", (today,)).fetchone()
+    conn.close()
     return f"""{HEADER}<div style="text-align:center;padding:30px;"><h1>📊 End of Day - {today}</h1><h2>Sales: R{int(s[0])} | Profit: R{int(s[1])}</h2><p>Saved in History forever. Tomorrow starts new day.</p><a href="/"><button>🏠 Home</button></a></div>"""
 
 if __name__ == "__main__":
