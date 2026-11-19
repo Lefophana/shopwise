@@ -33,7 +33,6 @@ def totals():
     today_sales = cur.fetchone()['t'] or 0
     return today_sales, profit, r['c'] or 0
 
-# NO MOVEMENT - fixed, stable, no animations, no hover jump
 STYLE = """
 <style>
 *{box-sizing:border-box}
@@ -48,6 +47,9 @@ body{font-family:Arial;margin:0;background:#f5f5f5}
 .card{flex:1;background:#d6f0ff;padding:15px;border-radius:8px;text-align:center}
 .card b{font-size:20px;display:block}
 .topbar{background:#8ecdf5;padding:10px;text-align:center;font-weight:bold;margin:15px 0}
+.searchbox{background:white;padding:15px;text-align:center;border:2px solid #e65100;border-radius:8px;margin:15px 0}
+.searchbox input{padding:10px;width:70%;font-size:16px;border:1px solid #999;border-radius:5px}
+.searchbox button{padding:10px 20px;background:#e65100;color:white;border:none;font-size:16px;font-weight:bold;border-radius:5px;cursor:pointer}
 table{width:100%;border-collapse:collapse;background:white;table-layout:fixed}
 th,td{border:1px solid #999;padding:10px;text-align:center;word-wrap:break-word}
 th{background:#f0f0f0}
@@ -61,7 +63,6 @@ th{background:#f0f0f0}
 .low{color:#dc2626;font-weight:bold;font-size:13px}
 .box{background:white;padding:20px;border-radius:8px;text-align:center}
 .bigbtn{background:#e65100;color:white;padding:12px 25px;border:none;font-size:16px;font-weight:bold;cursor:pointer}
-a{color:#111}
 </style>
 """
 
@@ -75,16 +76,26 @@ def home():
 @app.route("/shop")
 def shop():
     s,p,stock = totals()
+    q = request.args.get("q","").strip()
     db = get_db(); cur = db.cursor()
-    cur.execute("SELECT * FROM products")
+    if q:
+        cur.execute("SELECT * FROM products WHERE name LIKE ?", ('%'+q+'%',))
+    else:
+        cur.execute("SELECT * FROM products")
     rows = cur.fetchall()
-    h = f'''{STYLE}{NAV}<div class="wrap"><div class="topbar">🔥 Sales: R{s:.0f} | 💰 Profit: R{p:.0f} | 📦 Stock: R{stock:.0f}</div><table><tr><th>Name</th><th>Price</th><th>Qty</th><th>Sell</th><th>+ Stock</th><th>Edit</th><th>Delete</th></tr>'''
+    h = f'''{STYLE}{NAV}<div class="wrap"><div class="topbar">🔥 Sales: R{s:.0f} | 💰 Profit: R{p:.0f} | 📦 Stock: R{stock:.0f}</div><div class="searchbox"><form method="GET" action="/shop"><input name="q" value="{q}" placeholder="🔍 Search product... e.g Coke, Chips, Bread"><button>Search</button></form>'''
+    if q:
+        h += f'<p>Showing results for: <b>{q}</b> - <a href="/shop">Clear Search ❌</a></p>'
+    h += '</div><table><tr><th>Name</th><th>Price</th><th>Qty</th><th>Sell</th><th>+ Stock</th><th>Edit</th><th>Delete</th></tr>'
     for r in rows:
         low = '<br><span class="low">⚠️ LOW!</span>' if r['qty']<=5 else ''
         h += f'''<tr><td><b>{r['name']}</b>{low}</td><td>R{r['sell_price']:.1f}<br><small>Cost R{r['cost_price']:.1f}</small></td><td>{r['qty']}</td><td><form method="POST" action="/sell/{r['id']}"><button class="btn-sell">Sell 1</button></form></td><td><form method="POST" action="/addstock/{r['id']}"><button class="btn-add5">+5</button></form></td><td><a href="/edit/{r['id']}"><button class="btn-edit">Edit</button></a></td><td><form method="POST" action="/delete/{r['id']}"><button class="btn-del">Delete</button></form></td></tr>'''
     h += '</table>'
     if not rows:
-        h += '<p style="text-align:center">No products yet. Add below!</p>'
+        if q:
+            h += f'<p style="text-align:center">No product found for "{q}" 😢</p>'
+        else:
+            h += '<p style="text-align:center">No products yet. Add below!</p>'
     h += f'''<div class="addbox"><h3>Add New Product</h3><form method="POST" action="/add">Name <input name="name" required> Sell <input name="sell" type="number" step="0.01" required> Cost <input name="cost" type="number" step="0.01" required> Qty <input name="qty" type="number" required> <button>Add</button></form></div></div>'''
     return h
 
